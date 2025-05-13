@@ -1,3 +1,4 @@
+#database_utils.py
 import streamlit as st
 from database_utils import initialize_app, load_food_data
 
