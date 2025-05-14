@@ -25,11 +25,11 @@ def get_db_connection():
         else:
             # Fallback to environment variables
             db_config = {
-                'host': os.environ.get('MYSQL_HOST', 'localhost'),
-                'user': os.environ.get('MYSQL_USER', 'root'),
-                'password': os.environ.get('MYSQL_PASSWORD', 'Bootlabs@123'),
-                'database': os.environ.get('MYSQL_DATABASE', 'food_waste'),
-                'port': int(os.environ.get('MYSQL_PORT', 3306))
+                # 'host': os.environ.get('MYSQL_HOST', 'localhost'),
+                # 'user': os.environ.get('MYSQL_USER', 'root'),
+                # 'password': os.environ.get('MYSQL_PASSWORD', 'Bootlabs@123'),
+                # 'database': os.environ.get('MYSQL_DATABASE', 'food_waste'),
+                # 'port': int(os.environ.get('MYSQL_PORT', 3306))
             }
         
         # Connect to MySQL server
