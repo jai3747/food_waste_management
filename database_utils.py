@@ -1,37 +1,23 @@
 #database_utils.py
 import streamlit as st
-import os
-import mysql.connector
-from mysql.connector import Error
 import pandas as pd
 import datetime
+import mysql.connector
+from mysql.connector import Error
 
 def get_db_connection():
-    """Create a database connection to MySQL."""
+    """Create a database connection to TiDB Cloud."""
     try:
-        # Get MySQL connection parameters from environment variables or secrets
-        # For local development, you can set these in Streamlit secrets.toml file
+        # TiDB Cloud connection parameters
+        db_config = {
+            'host': 'gateway01.ap-southeast-1.prod.aws.tidbcloud.com',
+            'port': 4000,
+            'user': '4ZrUUWFVXrLrXUg.root',
+            'password': 'wIdAtRb3s0xhjPhL',
+            'database': 'test'
+        }
         
-        # First try to get from Streamlit secrets
-        if hasattr(st, 'secrets') and 'mysql' in st.secrets:
-            db_config = {
-                'host': st.secrets.mysql.host,
-                'user': st.secrets.mysql.user,
-                'password': st.secrets.mysql.password,
-                'database': st.secrets.mysql.database,
-                'port': st.secrets.mysql.port if 'port' in st.secrets.mysql else 4000
-            }
-        else:
-            # Fallback to environment variables
-            db_config = {
-                'host': 'gateway01.ap-southeast-1.prod.aws.tidbcloud.com',
-                'user': '4ZrUUWFVXrLrXUg.root',
-                'password': 'wIdAtRb3s0xhjPhL',  # Make sure the password is correct
-                'database': 'test',
-                'port': 4000
-            }
-        
-        # Connect to MySQL server
+        # Connect to TiDB Cloud
         conn = mysql.connector.connect(**db_config)
         
         # Enable autocommit
@@ -39,11 +25,11 @@ def get_db_connection():
         
         return conn
     except Error as e:
-        st.error(f"MySQL connection error: {str(e)}")
+        st.error(f"TiDB connection error: {str(e)}")
         return None
 
-def initialize_app():
-    """Initialize the application database."""
+def init_database():
+    """Initialize the database with tables and sample data."""
     try:
         conn = get_db_connection()
         if not conn:
@@ -51,17 +37,6 @@ def initialize_app():
             return False
             
         cursor = conn.cursor()
-        
-        # Get database name from config
-        database_name = os.environ.get('MYSQL_DATABASE', 'food_waste')
-        
-        # Create database if it doesn't exist
-        try:
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
-            cursor.execute(f"USE {database_name}")
-        except Error as e:
-            st.error(f"Error creating database: {str(e)}")
-            return False
         
         # Create tables if they don't exist
         cursor.execute('''
@@ -109,11 +84,10 @@ def initialize_app():
             ''', sample_data)
             
             conn.commit()
-            st.success("Database initialized with sample data!")
+            st.sidebar.success("Database initialized with sample data!")
         
         conn.close()
         return True
-        
     except Error as e:
         st.error(f"Database initialization error: {str(e)}")
         return False
@@ -148,4 +122,24 @@ def load_food_data():
     except Error as e:
         st.error(f"Error loading food data: {str(e)}")
         return pd.DataFrame()
-       
+
+def run_query(query):
+    """Execute a custom SQL query and return results as a DataFrame."""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return pd.DataFrame()
+        
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(query)
+        
+        # Fetch all rows as dictionaries
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Convert to DataFrame
+        data = pd.DataFrame(rows) if rows else pd.DataFrame()
+        return data
+    except Error as e:
+        st.error(f"Error running query: {str(e)}")
+        return pd.DataFrame()
