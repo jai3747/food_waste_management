@@ -224,4 +224,3 @@ queries = {
            LEFT JOIN food_claims c ON fl.Food_ID = c.Food_ID
            GROUP BY fl.Location
            ORDER BY claimed_percentage DESC"""
-}
