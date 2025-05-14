@@ -148,3 +148,4 @@ def load_food_data():
     except Error as e:
         st.error(f"Error loading food data: {str(e)}")
         return pd.DataFrame()
+       
