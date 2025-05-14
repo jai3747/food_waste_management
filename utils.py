@@ -19,16 +19,16 @@ def get_db_connection():
                 'user': st.secrets.mysql.user,
                 'password': st.secrets.mysql.password,
                 'database': st.secrets.mysql.database,
-                'port': st.secrets.mysql.port if 'port' in st.secrets.mysql else 3306
+                'port': st.secrets.mysql.port if 'port' in st.secrets.mysql else 4000
             }
         else:
             # Fallback to environment variables
             db_config = {
-                # 'host': os.environ.get('MYSQL_HOST', 'localhost'),
-                # 'user': os.environ.get('MYSQL_USER', 'root'),
-                # 'password': os.environ.get('MYSQL_PASSWORD', 'Bootlabs@123'),
-                # 'database': os.environ.get('MYSQL_DATABASE', 'food_waste'),
-                # 'port': int(os.environ.get('MYSQL_PORT', 3306))
+                'host': 'gateway01.ap-southeast-1.prod.aws.tidbcloud.com',
+                'user': '4ZrUUWFVXrLrXUg.root',
+                'password': 'wIdAtRb3s0xhjPhL',  # Make sure the password is correct
+                'database': 'test',
+                'port': 4000
             }
         
         # Connect to MySQL server
