@@ -1,7 +1,9 @@
+#app.py
 import streamlit as st
 import pandas as pd
 import datetime
-import sqlite3
+import mysql.connector
+from mysql.connector import Error
 import os
 
 # Set page configuration
@@ -16,13 +18,40 @@ st.set_page_config(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_db_connection():
-    """Create a database connection directly in the working directory."""
+    """Create a database connection to MySQL."""
     try:
-        # Create database directly in Streamlit's current working directory
-        conn = sqlite3.connect('food_waste.db')
+        # Get MySQL connection parameters from environment variables or secrets
+        # For local development, you can set these in Streamlit secrets.toml file
+        # https://docs.streamlit.io/library/advanced-features/secrets-management
+        
+        # First try to get from Streamlit secrets
+        if hasattr(st, 'secrets') and 'mysql' in st.secrets:
+            db_config = {
+                'host': st.secrets.mysql.host,
+                'user': st.secrets.mysql.user,
+                'password': st.secrets.mysql.password,
+                'database': st.secrets.mysql.database,
+                'port': st.secrets.mysql.port if 'port' in st.secrets.mysql else 3306
+            }
+        else:
+            # Fallback to environment variables
+            db_config = {
+                'host': os.environ.get('MYSQL_HOST', 'localhost'),
+                'user': os.environ.get('MYSQL_USER', 'root'),
+                'password': os.environ.get('MYSQL_PASSWORD', 'Bootlabs@123'),
+                'database': os.environ.get('MYSQL_DATABASE', 'food_waste'),
+                'port': int(os.environ.get('MYSQL_PORT', 3306))
+            }
+        
+        # Connect to MySQL server
+        conn = mysql.connector.connect(**db_config)
+        
+        # Enable autocommit
+        conn.autocommit = True
+        
         return conn
-    except Exception as e:
-        st.error(f"Database connection error: {str(e)}")
+    except Error as e:
+        st.error(f"MySQL connection error: {str(e)}")
         return None
 
 def init_database():
@@ -35,19 +64,30 @@ def init_database():
             
         cursor = conn.cursor()
         
+        # Create database if it doesn't exist
+        try:
+            # Get database name from config
+            database_name = os.environ.get('MYSQL_DATABASE', 'food_waste')
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
+            cursor.execute(f"USE {database_name}")
+        except Error as e:
+            st.error(f"Error creating database: {str(e)}")
+            return False
+        
         # Create tables if they don't exist
+        # Note MySQL syntax differences with AUTO_INCREMENT and DATETIME
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS food_listings (
-            Food_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            Food_Name TEXT NOT NULL,
-            Quantity INTEGER NOT NULL,
+            Food_ID INT AUTO_INCREMENT PRIMARY KEY,
+            Food_Name VARCHAR(255) NOT NULL,
+            Quantity INT NOT NULL,
             Expiry_Date DATE NOT NULL,
-            Provider_ID INTEGER NOT NULL,
-            Provider_Type TEXT,
-            Location TEXT,
-            Food_Type TEXT,
-            Meal_Type TEXT,
-            Listed_Date DATE DEFAULT CURRENT_DATE
+            Provider_ID INT NOT NULL,
+            Provider_Type VARCHAR(100),
+            Location VARCHAR(255),
+            Food_Type VARCHAR(100),
+            Meal_Type VARCHAR(100),
+            Listed_Date DATE DEFAULT (CURRENT_DATE)
         )
         ''')
         
@@ -73,10 +113,11 @@ def init_database():
                 ("Vegetable Soup", 15, (today + datetime.timedelta(days=2)).isoformat(), 4, "Restaurant", "Downtown", "Vegan", "Lunch")
             ]
             
+            # MySQL uses %s as placeholder instead of ? in SQLite
             cursor.executemany('''
             INSERT INTO food_listings 
             (Food_Name, Quantity, Expiry_Date, Provider_ID, Provider_Type, Location, Food_Type, Meal_Type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ''', sample_data)
             
             conn.commit()
@@ -84,7 +125,7 @@ def init_database():
         
         conn.close()
         return True
-    except Exception as e:
+    except Error as e:
         st.error(f"Database initialization error: {str(e)}")
         return False
 
@@ -94,20 +135,28 @@ def load_food_data():
         conn = get_db_connection()
         if not conn:
             return pd.DataFrame()
-            
+        
+        cursor = conn.cursor(dictionary=True)
         query = "SELECT * FROM food_listings ORDER BY Food_ID DESC"
-        data = pd.read_sql_query(query, conn)
+        cursor.execute(query)
+        
+        # Fetch all rows as dictionaries
+        rows = cursor.fetchall()
         conn.close()
         
-        # Convert date strings to datetime objects
-        if 'Expiry_Date' in data.columns and not data.empty:
-            data['Expiry_Date'] = pd.to_datetime(data['Expiry_Date']).dt.date
+        # Convert to DataFrame
+        data = pd.DataFrame(rows) if rows else pd.DataFrame()
         
-        if 'Listed_Date' in data.columns and not data.empty:
-            data['Listed_Date'] = pd.to_datetime(data['Listed_Date']).dt.date
+        # Convert date strings to datetime objects
+        if not data.empty:
+            if 'Expiry_Date' in data.columns:
+                data['Expiry_Date'] = pd.to_datetime(data['Expiry_Date']).dt.date
             
+            if 'Listed_Date' in data.columns:
+                data['Listed_Date'] = pd.to_datetime(data['Listed_Date']).dt.date
+                
         return data
-    except Exception as e:
+    except Error as e:
         st.error(f"Error loading food data: {str(e)}")
         return pd.DataFrame()
 
@@ -117,20 +166,27 @@ def run_query(query):
         conn = get_db_connection()
         if not conn:
             return pd.DataFrame()
-            
-        result = pd.read_sql_query(query, conn)
+        
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(query)
+        
+        # Fetch all rows as dictionaries
+        rows = cursor.fetchall()
         conn.close()
-        return result
-    except Exception as e:
+        
+        # Convert to DataFrame
+        data = pd.DataFrame(rows) if rows else pd.DataFrame()
+        return data
+    except Error as e:
         st.error(f"Error running query: {str(e)}")
         return pd.DataFrame()
 
-# SQL Queries for reports
+# SQL Queries for reports - updated for MySQL syntax differences
 queries = {
     "Food Expiring Soon (Next 3 Days)": 
         """SELECT Food_ID, Food_Name, Quantity, Expiry_Date, Provider_Type, Location 
            FROM food_listings 
-           WHERE date(Expiry_Date) BETWEEN date('now') AND date('now', '+3 days') 
+           WHERE DATE(Expiry_Date) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 3 DAY) 
            ORDER BY Expiry_Date""",
     
     "Food Available by Type": 
@@ -193,7 +249,7 @@ def add_food():
                         cursor = conn.cursor()
                         cursor.execute("""
                             INSERT INTO food_listings (Food_Name, Quantity, Expiry_Date, Provider_ID, Provider_Type, Location, Food_Type, Meal_Type)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                             (food_name, quantity, expiry, provider_id, provider_type, location, food_type, meal_type))
                         conn.commit()
                         conn.close()
@@ -207,7 +263,7 @@ def add_food():
                         st.session_state.need_rerun = True
                     else:
                         st.error("Failed to connect to database")
-                except Exception as e:
+                except Error as e:
                     st.error(f"Error adding food item: {str(e)}")
 
 def update_food():
@@ -329,8 +385,8 @@ def update_food():
                         cursor = conn.cursor()
                         cursor.execute("""
                             UPDATE food_listings 
-                            SET Food_Name = ?, Quantity = ?, Expiry_Date = ?, Location = ?, Food_Type = ?, Meal_Type = ?
-                            WHERE Food_ID = ?
+                            SET Food_Name = %s, Quantity = %s, Expiry_Date = %s, Location = %s, Food_Type = %s, Meal_Type = %s
+                            WHERE Food_ID = %s
                         """, (updated_name, updated_quantity, updated_expiry, updated_location, 
                               updated_food_type, updated_meal_type, selected_id))
                         
@@ -351,7 +407,7 @@ def update_food():
                     else:
                         st.error("Failed to connect to database")
                         
-                except Exception as e:
+                except Error as e:
                     st.error(f"Error updating food item: {str(e)}")
     
     except Exception as e:
@@ -428,7 +484,7 @@ def delete_food():
                 conn = get_db_connection()
                 if conn:
                     cursor = conn.cursor()
-                    cursor.execute("DELETE FROM food_listings WHERE Food_ID = ?", (selected_id,))
+                    cursor.execute("DELETE FROM food_listings WHERE Food_ID = %s", (selected_id,))
                     
                     rows_affected = cursor.rowcount
                     conn.commit()
@@ -447,7 +503,7 @@ def delete_food():
                 else:
                     st.error("Failed to connect to database")
                     
-            except Exception as e:
+            except Error as e:
                 st.error(f"Error deleting food item: {str(e)}")
     
     except Exception as e:
